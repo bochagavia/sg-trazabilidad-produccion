@@ -36,9 +36,6 @@ export function Layout() {
             <NavLink to="/marcar-uso" className={linkClass}>
               Marcar usado
             </NavLink>
-            <NavLink to="/consulta" className={linkClass}>
-              Consulta QR
-            </NavLink>
           </nav>
         </div>
       </header>

@@ -32,10 +32,31 @@ const EXCEL_HEADER = [
   "Alta registro (fecha/h)",
 ] as const;
 
+/** Columnas: uso + detalle del bin (estado del bin vinculado al momento de exportar). */
+const USOS_EXCEL_HEADER = [
+  "Fecha y hora de uso",
+  "Kg retirados (registro de uso)",
+  "ID registro de uso (UUID)",
+  "Productor",
+  "Fecha pesaje (bin)",
+  "Lote",
+  "Percha",
+  "Calibre (UL°)",
+  "public_id",
+  "Kg restantes actuales (bin)",
+  "Calibrado (bin, fecha/h)",
+  "Alta registro bin (fecha/h)",
+  "ID interno bin (UUID)",
+] as const;
+
+const USOS_PAGE = 1000;
+const USOS_MAX_ROWS = 100_000;
+
 export function Reports() {
   const [stock, setStock] = useState<StockRow[]>([]);
   const [stockLoading, setStockLoading] = useState(true);
   const [feed, setFeed] = useState<UseFeed[]>([]);
+  const [usosExporting, setUsosExporting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   const loadStock = useCallback(async () => {
@@ -128,14 +149,69 @@ export function Reports() {
     downloadExcel(name, "Fruta disponible", [...EXCEL_HEADER], dataRows);
   }
 
+  async function exportUsosExcel() {
+    setUsosExporting(true);
+    setErr(null);
+    const { downloadExcel } = await import("../lib/excelExport");
+    const usos: UseFeed[] = [];
+    let from = 0;
+    for (;;) {
+      const { data, error } = await supabase
+        .from("bin_uses")
+        .select(
+          `
+        *,
+        bin_lots ( *, producers (*) )
+      `
+        )
+        .order("used_at", { ascending: false })
+        .range(from, from + USOS_PAGE - 1);
+      if (error) {
+        setErr(error.message);
+        setUsosExporting(false);
+        return;
+      }
+      const chunk = (data as UseFeed[]) ?? [];
+      usos.push(...chunk);
+      if (chunk.length < USOS_PAGE) break;
+      from += USOS_PAGE;
+      if (from >= USOS_MAX_ROWS) break;
+    }
+
+    const name = `reportes-bines-usados-${new Date().toISOString().slice(0, 10)}.xlsx`;
+    const dataRows: (string | number)[][] = usos.map((u) => {
+      const b = u.bin_lots;
+      const kgRem =
+        b?.kg_remaining != null ? Number(b.kg_remaining) : "";
+      const kgUso = u.kg != null ? Number(u.kg) : "";
+      return [
+        fmtDateTime(u.used_at),
+        kgUso,
+        u.id,
+        b?.producers?.name ?? "",
+        b?.reception_date ?? "",
+        b?.lote ?? "",
+        b?.rack_percha ?? "",
+        b?.caliber ?? "",
+        b?.public_id ?? "",
+        kgRem,
+        b?.calibrated_at ? fmtDateTime(b.calibrated_at) : "",
+        b?.created_at ? fmtDateTime(b.created_at) : "",
+        b?.id ?? "",
+      ];
+    });
+    downloadExcel(name, "Bines usados", [...USOS_EXCEL_HEADER], dataRows);
+    setUsosExporting(false);
+  }
+
   return (
     <div className="space-y-10">
       <div>
         <h2 className="text-xl font-bold text-zinc-900">Reportes</h2>
         <p className="mt-1 text-sm text-zinc-600">
-          Fruta con saldo (kg &gt; 0) en detalle, exportable a Excel; y últimos
-          usos de bin por registro. Los datos se actualizan con la actividad en
-          planta.
+          Fruta con saldo (kg &gt; 0) en detalle, exportable a Excel; y usos de
+          bin (últimos 50 en pantalla, export con todos los registros y detalle
+          del bin). Los datos se actualizan con la actividad en planta.
         </p>
       </div>
 
@@ -233,10 +309,36 @@ export function Reports() {
         </div>
       </section>
 
-      <section>
-        <h3 className="mb-3 font-semibold text-zinc-900">
-          Usos (últimos en planta, por registro)
-        </h3>
+      <section className="space-y-3">
+        <div className="flex flex-wrap items-end justify-between gap-2">
+          <h3 className="font-semibold text-zinc-900">
+            Usos (últimos en planta, por registro)
+          </h3>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => void loadFeed()}
+              className="rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-800 hover:bg-zinc-100"
+            >
+              Actualizar lista
+            </button>
+            <button
+              type="button"
+              onClick={exportUsosExcel}
+              disabled={usosExporting}
+              className="rounded-lg bg-brand-700 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:cursor-wait disabled:opacity-60"
+            >
+              {usosExporting
+                ? "Generando…"
+                : "Exportar usos a Excel (detalle completo)"}
+            </button>
+          </div>
+        </div>
+        <p className="text-xs text-zinc-500">
+          En pantalla: últimos 50. El Excel incluye <strong>todos</strong> los
+          usos (hasta 100.000 filas) con productor, lote, percha, calibre, ids y
+          fechas del bin.
+        </p>
         <div className="overflow-x-auto rounded-2xl border border-zinc-200 bg-white shadow-sm">
           <table className="w-full min-w-[640px] text-left text-sm">
             <thead className="bg-zinc-50 text-xs font-semibold uppercase text-zinc-500">

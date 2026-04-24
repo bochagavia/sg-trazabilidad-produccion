@@ -5,7 +5,6 @@ import { Producers } from "./pages/Producers";
 import { Calibrado } from "./pages/Calibrado";
 import { Reports } from "./pages/Reports";
 import { BinUso } from "./pages/BinUso";
-import { Lookup } from "./pages/Lookup";
 
 export default function App() {
   return (
@@ -25,7 +24,10 @@ export default function App() {
           element={<Navigate to="/reportes" replace />}
         />
         <Route path="/marcar-uso" element={<BinUso />} />
-        <Route path="/consulta" element={<Lookup />} />
+        <Route
+          path="/consulta"
+          element={<Navigate to="/reportes" replace />}
+        />
       </Route>
     </Routes>
   );
