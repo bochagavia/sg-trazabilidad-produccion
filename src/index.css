@@ -1,0 +1,29 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  --color-brand-50: #f0fdf4;
+  --color-brand-100: #dcfce7;
+  --color-brand-600: #16a34a;
+  --color-brand-700: #15803d;
+  --color-brand-900: #14532d;
+}
+
+body {
+  @apply bg-zinc-50 text-zinc-900 antialiased font-sans;
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: white;
+  }
+  .reception-print-sheet {
+    break-after: page;
+  }
+  .reception-print-sheet:last-of-type {
+    break-after: auto;
+  }
+}
