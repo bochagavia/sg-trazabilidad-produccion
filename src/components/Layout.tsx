@@ -22,13 +22,10 @@ export function Layout() {
           </div>
           <nav className="flex flex-wrap gap-1">
             <NavLink to="/" end className={linkClass}>
-              Inicio
+              Calibrado
             </NavLink>
             <NavLink to="/productores" className={linkClass}>
               Productores
-            </NavLink>
-            <NavLink to="/calibrado" className={linkClass}>
-              Calibrado
             </NavLink>
             <NavLink to="/reportes" className={linkClass}>
               Reportes

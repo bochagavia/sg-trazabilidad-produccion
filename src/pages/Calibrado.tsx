@@ -3,30 +3,42 @@ import { supabase } from "../lib/supabase";
 import { newPublicId } from "../lib/id";
 import {
   emptyToNull,
-  formatCaliberForStorage,
   parsePositiveKg,
   parseRackPerchaOptional,
-  parseUserCaliberNumber,
   RACK_PERCHA_MAX,
   RACK_PERCHA_MIN,
 } from "../lib/binFields";
+import { calibersByGroup } from "../lib/caliberGroups";
 import { BinEditDialog } from "../components/BinEditDialog";
 import { BinLabelCard, type BinLabelData } from "../components/BinLabelCard";
-import type { BinLotRow, ProducerRow } from "../lib/database.types";
+import type {
+  BinLotRow,
+  CaliberCodeRow,
+  ProducerRow,
+} from "../lib/database.types";
 
 type Producer = ProducerRow;
 
 type BinLotWithProducer = BinLotRow & { producers: Producer | null };
 
-/** Un solo bin por registro (sin filas múltiples). */
-type BinFormFields = {
-  caliber: string;
+type CaliberInputRow = {
+  caliberCodeId: string;
+  code: string;
+  label: string;
+  sort_order: number;
   kg: string;
   percha: string;
 };
 
-function emptyBinFields(): BinFormFields {
-  return { caliber: "", kg: "", percha: "" };
+function emptyCaliberInputs(codes: CaliberCodeRow[]): CaliberInputRow[] {
+  return codes.map((c) => ({
+    caliberCodeId: c.id,
+    code: c.code,
+    label: c.label,
+    sort_order: c.sort_order,
+    kg: "",
+    percha: "",
+  }));
 }
 
 function binStatus(bin: BinLotRow): string {
@@ -41,7 +53,9 @@ export function Calibrado() {
   const [receptionDate, setReceptionDate] = useState(() =>
     new Date().toISOString().slice(0, 10)
   );
-  const [bin, setBin] = useState<BinFormFields>(emptyBinFields);
+  const [caliberRows, setCaliberRows] = useState<CaliberInputRow[]>([]);
+  const [calibersLoading, setCalibersLoading] = useState(true);
+  const [calibersErr, setCalibersErr] = useState<string | null>(null);
 
   const [lote, setLote] = useState("");
 
@@ -82,13 +96,48 @@ export function Calibrado() {
     if (data?.length && !producerId) setProducerId(data[0].id);
   }, [producerId]);
 
+  const loadCalibers = useCallback(async () => {
+    setCalibersLoading(true);
+    const { data, error } = await supabase
+      .from("caliber_codes")
+      .select("*")
+      .eq("active", true)
+      .order("sort_order");
+
+    if (error) {
+      setCalibersErr(error.message);
+      setCaliberRows([]);
+    } else {
+      setCalibersErr(null);
+      const codes = (data as CaliberCodeRow[]) ?? [];
+      setCaliberRows(emptyCaliberInputs(codes));
+    }
+    setCalibersLoading(false);
+  }, []);
+
   useEffect(() => {
     void loadProducers();
   }, [loadProducers]);
 
   useEffect(() => {
+    void loadCalibers();
+  }, [loadCalibers]);
+
+  useEffect(() => {
     void loadHistory();
   }, [loadHistory]);
+
+  const caliberGroups = useMemo(() => {
+    const master: CaliberCodeRow[] = caliberRows.map((r) => ({
+      id: r.caliberCodeId,
+      code: r.code,
+      label: r.label,
+      sort_order: r.sort_order,
+      active: true,
+      created_at: "",
+    }));
+    return calibersByGroup(master);
+  }, [caliberRows]);
 
   const producerName = useMemo(() => {
     const p = producers.find((x) => x.id === producerId);
@@ -166,6 +215,17 @@ export function Calibrado() {
     setReprintLabel(rowToLabel(updated));
   }
 
+  function updateCaliberRow(
+    caliberCodeId: string,
+    patch: Partial<Pick<CaliberInputRow, "kg" | "percha">>
+  ) {
+    setCaliberRows((rows) =>
+      rows.map((r) =>
+        r.caliberCodeId === caliberCodeId ? { ...r, ...patch } : r
+      )
+    );
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setErr(null);
@@ -173,43 +233,57 @@ export function Calibrado() {
       setErr("Selecciona un productor");
       return;
     }
+    if (caliberRows.length === 0) {
+      setErr("No hay calibres cargados en el maestro.");
+      return;
+    }
 
     const nowIso = new Date().toISOString();
-    const r = bin;
-    const calNum = parseUserCaliberNumber(r.caliber);
-    if (calNum == null) {
-      setErr(
-        "Ingresá un número de calibre mayor que 0 (podés usar coma o punto para decimales)."
-      );
+    const inserts: Array<{
+      public_id: string;
+      producer_id: string;
+      reception_date: string;
+      caliber: string;
+      caliber_code_id: string;
+      kg_remaining: number;
+      calibrated_at: string;
+      lote: string | null;
+      rack_percha: string | null;
+    }> = [];
+    const nextLabels: BinLabelData[] = [];
+
+    for (const r of caliberRows) {
+      const kg = parsePositiveKg(r.kg);
+      if (kg == null) continue;
+
+      const perRes = parseRackPerchaOptional(r.percha);
+      if (!perRes.ok) {
+        setErr(`${r.label}: ${perRes.message}`);
+        return;
+      }
+      const rp = perRes.value;
+      const public_id = newPublicId();
+      inserts.push({
+        public_id,
+        producer_id: producerId,
+        reception_date: receptionDate,
+        caliber: r.code,
+        caliber_code_id: r.caliberCodeId,
+        kg_remaining: kg,
+        calibrated_at: nowIso,
+        ...baseMeta,
+        rack_percha: rp,
+      });
+      nextLabels.push(labelFromMeta(public_id, r.code, kg, rp));
+    }
+
+    if (inserts.length === 0) {
+      setErr("Ingresá kg en al menos un calibre (los demás se omiten).");
       return;
     }
-    const kg = parsePositiveKg(r.kg);
-    if (kg == null) {
-      setErr("Ingresá kg mayor que 0.");
-      return;
-    }
-    const caliberText = formatCaliberForStorage(calNum);
-    const public_id = newPublicId();
-    const perRes = parseRackPerchaOptional(r.percha);
-    if (!perRes.ok) {
-      setErr(perRes.message);
-      return;
-    }
-    const rp = perRes.value;
-    const row = {
-      public_id,
-      producer_id: producerId,
-      reception_date: receptionDate,
-      caliber: caliberText,
-      caliber_code_id: null,
-      kg_remaining: kg,
-      calibrated_at: nowIso,
-      ...baseMeta,
-      rack_percha: rp,
-    };
 
     setLoading(true);
-    const { error } = await supabase.from("bin_lots").insert([row]);
+    const { error } = await supabase.from("bin_lots").insert(inserts);
     setLoading(false);
     if (error) {
       setErr(error.message);
@@ -217,7 +291,10 @@ export function Calibrado() {
     }
 
     setReprintLabel(null);
-    setLabels([labelFromMeta(public_id, caliberText, kg, rp)]);
+    setLabels(nextLabels);
+    setCaliberRows((rows) =>
+      rows.map((r) => ({ ...r, kg: "", percha: "" }))
+    );
     void loadHistory();
   }
 
@@ -228,7 +305,9 @@ export function Calibrado() {
   function resetFlow() {
     setLabels(null);
     setReprintLabel(null);
-    setBin(emptyBinFields());
+    setCaliberRows((rows) =>
+      rows.map((r) => ({ ...r, kg: "", percha: "" }))
+    );
     setLote("");
     setErr(null);
   }
@@ -238,15 +317,15 @@ export function Calibrado() {
       <div className="no-print space-y-2">
         <h2 className="text-xl font-bold text-zinc-900">Calibrado</h2>
         <p className="text-sm text-zinc-600">
-          Un <strong>bin por registro</strong>: productor, fecha, lote opcional,
-          calibre (número a mano), kg y percha. El <strong>QR</strong> lleva calibre,
-          productor, fecha, id y kg (el lote no va en el QR; sigue en la etiqueta).
+          Completá <strong>kg y percha</strong> solo en los calibres que correspondan:
+          se crea <strong>un bin por calibre con kg</strong>. Los calibres sin kg no se
+          guardan. El <strong>QR</strong> lleva calibre, productor, fecha, id y kg.
         </p>
       </div>
 
       <form
         onSubmit={submit}
-        className="no-print max-w-3xl space-y-4 rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm"
+        className="no-print max-w-4xl space-y-4 rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm"
       >
         <div>
           <label className="block text-xs font-medium text-zinc-500">
@@ -288,70 +367,108 @@ export function Calibrado() {
           />
         </div>
 
-        <fieldset className="space-y-3 rounded-xl border border-zinc-200 bg-zinc-50/80 p-4">
-          <legend className="px-1 text-sm font-medium text-zinc-700">
-            Calibre, kg y percha
-          </legend>
+        <div className="space-y-4">
           <p className="text-xs text-zinc-600">
-            <strong>Calibre</strong> a mano (número positivo, coma o punto).{" "}
+            Todos los calibres del maestro aparecen abajo.{" "}
             <strong>Percha</strong> opcional: entero {RACK_PERCHA_MIN} a{" "}
             {RACK_PERCHA_MAX}.
           </p>
-          <div className="flex flex-wrap items-end gap-x-2 gap-y-2 rounded-lg border border-zinc-200/90 bg-white px-3 py-2.5">
-            <div className="flex min-w-0 flex-1 flex-col gap-0.5 sm:max-w-[7rem]">
-              <span className="text-xs font-medium text-zinc-500">Calibre (UL°)</span>
-              <input
-                type="text"
-                inputMode="decimal"
-                autoComplete="off"
-                placeholder="ej. 32"
-                aria-label="Calibre"
-                className="w-full rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-right text-sm font-medium tabular-nums text-zinc-900"
-                value={bin.caliber}
-                onChange={(e) =>
-                  setBin((b) => ({ ...b, caliber: e.target.value }))
-                }
-              />
-            </div>
-            <div className="flex w-[6.5rem] flex-col gap-0.5">
-              <span className="text-xs font-medium text-zinc-500">Kg</span>
-              <input
-                type="text"
-                inputMode="decimal"
-                autoComplete="off"
-                placeholder="—"
-                aria-label="Kilos"
-                className="w-full rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-right text-sm tabular-nums"
-                value={bin.kg}
-                onChange={(e) => setBin((b) => ({ ...b, kg: e.target.value }))}
-              />
-            </div>
-            <div className="flex w-[4.25rem] flex-col gap-0.5 sm:w-[4.5rem]">
-              <span className="text-xs font-medium text-zinc-500">Percha</span>
-              <input
-                type="text"
-                inputMode="numeric"
-                autoComplete="off"
-                title={`Percha opcional: entero ${RACK_PERCHA_MIN} a ${RACK_PERCHA_MAX}`}
-                placeholder="—"
-                aria-label={`Percha ${RACK_PERCHA_MIN} a ${RACK_PERCHA_MAX}`}
-                className="w-full rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-right text-sm tabular-nums"
-                value={bin.percha}
-                onChange={(e) => {
-                  const v = e.target.value.replace(/\D/g, "").slice(0, 3);
-                  setBin((b) => ({ ...b, percha: v }));
-                }}
-              />
-            </div>
-          </div>
-        </fieldset>
+
+          {calibersErr && (
+            <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">
+              {calibersErr}
+            </p>
+          )}
+
+          {calibersLoading ? (
+            <p className="text-sm text-zinc-500">Cargando calibres…</p>
+          ) : caliberRows.length === 0 ? (
+            <p className="text-sm text-amber-800">
+              No hay calibres activos en el maestro. Revisá la tabla{" "}
+              <code className="text-xs">caliber_codes</code> en Supabase.
+            </p>
+          ) : (
+            caliberGroups.map(({ group, items }) => (
+              <fieldset
+                key={group}
+                className="space-y-2 rounded-xl border border-zinc-200 bg-zinc-50/80 p-4"
+              >
+                <legend className="px-1 text-sm font-semibold text-zinc-800">
+                  {group}
+                </legend>
+                <div className="overflow-x-auto rounded-lg border border-zinc-200/90 bg-white">
+                  <table className="w-full min-w-[420px] text-sm">
+                    <thead className="bg-zinc-50 text-xs font-semibold uppercase text-zinc-500">
+                      <tr>
+                        <th className="px-3 py-2 text-left">Calibre</th>
+                        <th className="w-[6.5rem] px-3 py-2 text-right">Kg</th>
+                        <th className="w-[4.5rem] px-3 py-2 text-right">Percha</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-100">
+                      {items.map((item) => {
+                        const row = caliberRows.find(
+                          (r) => r.caliberCodeId === item.id
+                        );
+                        if (!row) return null;
+                        return (
+                          <tr key={row.caliberCodeId}>
+                            <td className="px-3 py-2 font-medium text-zinc-900">
+                              {row.label}
+                            </td>
+                            <td className="px-3 py-2">
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                autoComplete="off"
+                                placeholder="—"
+                                aria-label={`Kg calibre ${row.label}`}
+                                className="w-full rounded-md border border-zinc-300 px-2 py-1.5 text-right text-sm tabular-nums"
+                                value={row.kg}
+                                onChange={(e) =>
+                                  updateCaliberRow(row.caliberCodeId, {
+                                    kg: e.target.value,
+                                  })
+                                }
+                              />
+                            </td>
+                            <td className="px-3 py-2">
+                              <input
+                                type="text"
+                                inputMode="numeric"
+                                autoComplete="off"
+                                title={`Percha opcional: entero ${RACK_PERCHA_MIN} a ${RACK_PERCHA_MAX}`}
+                                placeholder="—"
+                                aria-label={`Percha calibre ${row.label}`}
+                                className="w-full rounded-md border border-zinc-300 px-2 py-1.5 text-right text-sm tabular-nums"
+                                value={row.percha}
+                                onChange={(e) => {
+                                  const v = e.target.value
+                                    .replace(/\D/g, "")
+                                    .slice(0, 3);
+                                  updateCaliberRow(row.caliberCodeId, {
+                                    percha: v,
+                                  });
+                                }}
+                              />
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </fieldset>
+            ))
+          )}
+        </div>
 
         <button
           type="submit"
-          disabled={loading}
+          disabled={loading || calibersLoading || caliberRows.length === 0}
           className="rounded-lg bg-brand-700 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50"
         >
-          {loading ? "Guardando…" : "Guardar calibrado e imprimir"}
+          {loading ? "Guardando…" : "Guardar calibrados e imprimir"}
         </button>
       </form>
 
@@ -399,7 +516,7 @@ export function Calibrado() {
                   <th className="px-4 py-3">Productor</th>
                   <th className="px-4 py-3">Lote</th>
                   <th className="px-4 py-3">Percha</th>
-                  <th className="px-4 py-3">Calibre (UL°)</th>
+                  <th className="px-4 py-3">Calibre</th>
                   <th className="px-4 py-3">public_id</th>
                   <th className="px-4 py-3">Estado</th>
                   <th className="px-4 py-3 text-right">Acciones</th>
