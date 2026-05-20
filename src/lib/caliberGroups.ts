@@ -1,51 +1,36 @@
 import type { CaliberCodeRow } from "./database.types";
 
-/** Códigos maestro estándar (ciruela). */
-const MAIN_SIZE_CODES = new Set(["L", "XL", "J", "XJ"]);
-
 /** Orden fijo de secciones en la UI. */
 export const CALIBER_GROUP_ORDER: string[] = [
   "Calibres",
+  "Pepilla",
   "Descarte",
-  "Hasta 40",
-  "40 – 55",
-  "56 – 69",
-  "70 – 85",
-  "86 en adelante",
   "Otros",
 ];
-
-function firstLeadingNumber(code: string): number | null {
-  const m = code.trim().match(/^\D*(\d+)/);
-  if (!m) return null;
-  return Number.parseInt(m[1]!, 10);
-}
-
-/**
- * Nombre de grupo para chips y filas de kg (misma lógica que el maestro en BD).
- */
-export function caliberGroupLabel(c: CaliberCodeRow): string {
-  const key = c.code.trim();
-  if (MAIN_SIZE_CODES.has(key)) return "Calibres";
-  if (
-    key === "0-0" ||
-    key.toLowerCase() === "descarte" ||
-    c.label.trim() === "Descarte"
-  ) {
-    return "Descarte";
-  }
-  const n = firstLeadingNumber(c.code);
-  if (n == null) return "Otros";
-  if (n < 40) return "Hasta 40";
-  if (n < 56) return "40 – 55";
-  if (n < 70) return "56 – 69";
-  if (n < 86) return "70 – 85";
-  return "86 en adelante";
-}
 
 function groupSortKey(label: string): number {
   const i = CALIBER_GROUP_ORDER.indexOf(label);
   return i === -1 ? 900 : i;
+}
+
+/**
+ * Nombre de grupo para filas de kg en calibrado.
+ */
+export function caliberGroupLabel(c: CaliberCodeRow): string {
+  const key = c.code.trim();
+  const upper = key.toUpperCase();
+  if (upper === "PEPILLA" || c.label.trim().toUpperCase() === "PEPILLA") {
+    return "Pepilla";
+  }
+  if (
+    key === "0-0" ||
+    upper === "DESCARTE" ||
+    c.label.trim().toLowerCase() === "descarte"
+  ) {
+    return "Descarte";
+  }
+  if (/^\d+\/\d+$/.test(key)) return "Calibres";
+  return "Otros";
 }
 
 /** Orden visual: por grupo, luego sort_order del maestro. */
