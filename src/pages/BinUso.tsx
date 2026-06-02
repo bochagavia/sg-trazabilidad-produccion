@@ -119,7 +119,7 @@ export function BinUso() {
             className="mt-1 w-full min-h-[88px] rounded-lg border border-zinc-300 px-3 py-2 font-mono text-sm"
             value={raw}
             onChange={(e) => setRaw(e.target.value)}
-            placeholder='{"c":"30/38","n":"...","d":"...","i":"public_id_..."} o solo el id'
+            placeholder='{"c":"30-39","n":"...","d":"...","i":"public_id_..."} o solo el id'
             autoComplete="off"
           />
         </div>

@@ -19,7 +19,7 @@ function groupSortKey(label: string): number {
 export function caliberGroupLabel(c: CaliberCodeRow): string {
   const key = c.code.trim();
   const upper = key.toUpperCase();
-  if (upper === "PEPILLA" || c.label.trim().toUpperCase() === "PEPILLA") {
+  if (upper === "PEPILLA") {
     return "Pepilla";
   }
   if (
@@ -29,7 +29,7 @@ export function caliberGroupLabel(c: CaliberCodeRow): string {
   ) {
     return "Descarte";
   }
-  if (/^\d+\/\d+$/.test(key)) return "Calibres";
+  if (/^\d+-\d+$/.test(key)) return "Calibres";
   return "Otros";
 }
 
