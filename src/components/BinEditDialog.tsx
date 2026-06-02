@@ -2,8 +2,8 @@ import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 import type { BinLotRow, ProducerRow } from "../lib/database.types";
 import {
-  emptyToNull,
   formatCaliberForStorage,
+  parseLoteRequired,
   parseKgRemaining,
   parseRackPerchaOptional,
   parseUserCaliberNumber,
@@ -66,6 +66,11 @@ export function BinEditDialog({
       setErr("Seleccioná un productor.");
       return;
     }
+    const loteRes = parseLoteRequired(lote);
+    if (!loteRes.ok) {
+      setErr(loteRes.message);
+      return;
+    }
     const calNum = parseUserCaliberNumber(caliber);
     if (calNum == null) {
       setErr(
@@ -102,7 +107,7 @@ export function BinEditDialog({
         reception_date: receptionDate,
         caliber: caliberText,
         caliber_code_id: null,
-        lote: emptyToNull(lote),
+        lote: loteRes.value,
         rack_percha: perRes.value,
         kg_remaining: nextKg,
         calibrated_at: nextCalibrated,
@@ -175,13 +180,13 @@ export function BinEditDialog({
           </div>
           <div>
             <label className="block text-xs font-medium text-zinc-500">
-              Lote
+              Lote <span className="text-red-600">*</span>
             </label>
             <input
+              required
               className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm"
               value={lote}
               onChange={(e) => setLote(e.target.value)}
-              placeholder="Opcional"
             />
           </div>
           <div className="flex flex-wrap items-end gap-2 rounded-lg border border-zinc-200 bg-zinc-50/80 p-3">

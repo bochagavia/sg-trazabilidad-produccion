@@ -4,6 +4,8 @@ import { parsePublicIdFromScan } from "../lib/qrPublicId";
 
 export function BinUso() {
   const [raw, setRaw] = useState("");
+  const [op, setOp] = useState("");
+  const [cliente, setCliente] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -12,6 +14,18 @@ export function BinUso() {
     e.preventDefault();
     setErr(null);
     setOk(null);
+
+    const opVal = op.trim();
+    const clienteVal = cliente.trim();
+    if (!opVal) {
+      setErr("Ingresá el número de OP.");
+      return;
+    }
+    if (!clienteVal) {
+      setErr("Ingresá el cliente.");
+      return;
+    }
+
     const t = raw.trim();
     if (!t) {
       setErr("Pegá el QR o el public_id del bin.");
@@ -28,6 +42,8 @@ export function BinUso() {
     setLoading(true);
     const { data, error } = await supabase.rpc("register_bin_use", {
       p_public_id: publicId,
+      p_op_number: opVal,
+      p_client_name: clienteVal,
     });
     setLoading(false);
 
@@ -45,7 +61,7 @@ export function BinUso() {
         : String(data);
 
     setOk(
-      `Bin marcado como usado. Hora registrada: ${usedAt}. El saldo quedó en 0 kg.`
+      `Bin ingresado al proceso. OP ${opVal} · ${clienteVal}. Hora: ${usedAt}. Saldo en 0 kg.`
     );
     setRaw("");
   }
@@ -53,13 +69,11 @@ export function BinUso() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-xl font-bold text-zinc-900">Marcar bin usado</h2>
+        <h2 className="text-xl font-bold text-zinc-900">Ingreso a proceso</h2>
         <p className="mt-1 text-sm text-zinc-600">
-          Escaneá o pegá el <strong>contenido del QR</strong> (o solo el{" "}
-          <code className="rounded bg-zinc-100 px-1">public_id</code>): se
-          guarda la <strong>fecha y hora en el servidor</strong> y se descuenta{" "}
-          <strong>todo el saldo</strong> de ese bin (baja entera), igual que con
-          el flujo de uso por escaneo.
+          Escaneá el <strong>QR del bin</strong>, indicá <strong>OP</strong> y{" "}
+          <strong>cliente</strong>, y confirmá. Se registra la hora en el servidor
+          y se descuenta <strong>todo el saldo</strong> del bin.
         </p>
       </div>
 
@@ -67,15 +81,45 @@ export function BinUso() {
         onSubmit={submit}
         className="max-w-xl space-y-4 rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm"
       >
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label className="block text-xs font-medium text-zinc-500">
+              OP <span className="text-red-600">*</span>
+            </label>
+            <input
+              required
+              className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm"
+              value={op}
+              onChange={(e) => setOp(e.target.value)}
+              placeholder="Ej. 2401"
+              autoComplete="off"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-zinc-500">
+              Cliente <span className="text-red-600">*</span>
+            </label>
+            <input
+              required
+              className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm"
+              value={cliente}
+              onChange={(e) => setCliente(e.target.value)}
+              placeholder="Nombre cliente"
+              autoComplete="off"
+            />
+          </div>
+        </div>
+
         <div>
           <label className="block text-xs font-medium text-zinc-500">
-            QR o public_id
+            QR o public_id <span className="text-red-600">*</span>
           </label>
           <textarea
+            required
             className="mt-1 w-full min-h-[88px] rounded-lg border border-zinc-300 px-3 py-2 font-mono text-sm"
             value={raw}
             onChange={(e) => setRaw(e.target.value)}
-            placeholder='{"c":"32","n":"...","d":"...","i":"public_id_..."} o solo el id'
+            placeholder='{"c":"30/38","n":"...","d":"...","i":"public_id_..."} o solo el id'
             autoComplete="off"
           />
         </div>
@@ -84,7 +128,7 @@ export function BinUso() {
           disabled={loading}
           className="rounded-lg bg-brand-700 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50"
         >
-          {loading ? "Registrando…" : "Registrar uso del bin"}
+          {loading ? "Registrando…" : "Registrar ingreso a proceso"}
         </button>
       </form>
 

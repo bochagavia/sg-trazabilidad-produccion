@@ -54,4 +54,6 @@ export type BinUseRow = {
   bin_lot_id: string;
   used_at: string;
   kg: number;
+  op_number?: string | null;
+  client_name?: string | null;
 };

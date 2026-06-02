@@ -35,6 +35,8 @@ const EXCEL_HEADER = [
 /** Columnas: uso + detalle del bin (estado del bin vinculado al momento de exportar). */
 const USOS_EXCEL_HEADER = [
   "Fecha y hora de uso",
+  "OP",
+  "Cliente",
   "Kg retirados (registro de uso)",
   "ID registro de uso (UUID)",
   "Productor",
@@ -186,6 +188,8 @@ export function Reports() {
       const kgUso = u.kg != null ? Number(u.kg) : "";
       return [
         fmtDateTime(u.used_at),
+        u.op_number ?? "",
+        u.client_name ?? "",
         kgUso,
         u.id,
         b?.producers?.name ?? "",
@@ -336,14 +340,16 @@ export function Reports() {
         </div>
         <p className="text-xs text-zinc-500">
           En pantalla: últimos 50. El Excel incluye <strong>todos</strong> los
-          usos (hasta 100.000 filas) con productor, lote, percha, calibre, ids y
-          fechas del bin.
+          usos (hasta 100.000 filas) con OP, cliente, productor, lote, percha,
+          calibre, ids y fechas del bin.
         </p>
         <div className="overflow-x-auto rounded-2xl border border-zinc-200 bg-white shadow-sm">
           <table className="w-full min-w-[640px] text-left text-sm">
             <thead className="bg-zinc-50 text-xs font-semibold uppercase text-zinc-500">
               <tr>
                 <th className="px-4 py-3">Fecha y hora de uso</th>
+                <th className="px-4 py-3">OP</th>
+                <th className="px-4 py-3">Cliente</th>
                 <th className="px-4 py-3">Productor</th>
                 <th className="px-4 py-3">public_id</th>
                 <th className="px-4 py-3">Kg</th>
@@ -357,6 +363,12 @@ export function Reports() {
                       dateStyle: "medium",
                       timeStyle: "medium",
                     })}
+                  </td>
+                  <td className="px-4 py-3 font-medium text-zinc-900 whitespace-nowrap">
+                    {u.op_number ?? "—"}
+                  </td>
+                  <td className="px-4 py-3 text-zinc-800">
+                    {u.client_name ?? "—"}
                   </td>
                   <td className="px-4 py-3 font-medium text-zinc-900">
                     {u.bin_lots?.producers?.name ?? "—"}

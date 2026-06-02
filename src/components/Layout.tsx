@@ -31,7 +31,7 @@ export function Layout() {
               Reportes
             </NavLink>
             <NavLink to="/marcar-uso" className={linkClass}>
-              Marcar usado
+              Ingreso proceso
             </NavLink>
           </nav>
         </div>

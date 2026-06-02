@@ -3,6 +3,7 @@ import { supabase } from "../lib/supabase";
 import { newPublicId } from "../lib/id";
 import {
   emptyToNull,
+  parseLoteRequired,
   parsePositiveKg,
   parseRackPerchaOptional,
   RACK_PERCHA_MAX,
@@ -224,6 +225,12 @@ export function Calibrado() {
       setErr("No hay calibres cargados en el maestro.");
       return;
     }
+    const loteRes = parseLoteRequired(lote);
+    if (!loteRes.ok) {
+      setErr(loteRes.message);
+      return;
+    }
+    const loteValue = loteRes.value;
 
     const nowIso = new Date().toISOString();
     const inserts: Array<{
@@ -234,7 +241,7 @@ export function Calibrado() {
       caliber_code_id: string;
       kg_remaining: number;
       calibrated_at: string;
-      lote: string | null;
+      lote: string;
       rack_percha: string | null;
     }> = [];
     const nextLabels: BinLabelData[] = [];
@@ -258,7 +265,7 @@ export function Calibrado() {
         caliber_code_id: r.caliberCodeId,
         kg_remaining: kg,
         calibrated_at: nowIso,
-        ...baseMeta,
+        lote: loteValue,
         rack_percha: rp,
       });
       nextLabels.push(labelFromMeta(public_id, r.code, kg, rp));
@@ -344,13 +351,14 @@ export function Calibrado() {
 
         <div>
           <label className="block text-xs font-medium text-zinc-500">
-            Lote
+            Lote <span className="text-red-600">*</span>
           </label>
           <input
+            required
             className="mt-1 w-full max-w-md rounded-lg border border-zinc-300 px-3 py-2 text-sm"
             value={lote}
             onChange={(e) => setLote(e.target.value)}
-            placeholder="Opcional"
+            placeholder="Ej. 12"
           />
         </div>
 

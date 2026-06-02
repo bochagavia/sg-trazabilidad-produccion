@@ -10,6 +10,18 @@ export function emptyToNull(s: string): string | null {
   return t === "" ? null : t;
 }
 
+export function parseLoteRequired(
+  raw: string
+):
+  | { ok: true; value: string }
+  | { ok: false; message: string } {
+  const t = raw.trim();
+  if (t === "") {
+    return { ok: false, message: "Ingresá el lote." };
+  }
+  return { ok: true, value: t };
+}
+
 export function parsePositiveKg(raw: string): number | null {
   const n = Number(raw.replace(",", ".").trim());
   if (!Number.isFinite(n) || n <= 0) return null;
